@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>森の採集記 — VR昆虫図鑑</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<style>
+  :root{
+    --cream:#F3EEDF;
+    --cream-2:#EAE2CB;
+    --ink:#241C12;
+    --moss:#33472E;
+    --moss-2:#4C6444;
+    --bark:#5C4630;
+    --gold:#C9962C;
+    --gold-2:#E3B85C;
+    --shadow: rgba(20,16,8,0.28);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;font-family:'Inter',sans-serif;color:var(--ink);}
+  a-scene{width:100%;height:100%;}
+
+  /* ---------- HUD shell ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10;}
+  #hud *{pointer-events:auto;}
+
+  .tag{
+    position:fixed; top:22px; left:22px;
+    background:var(--cream); border:1px solid rgba(36,28,18,0.15);
+    padding:10px 18px 11px; border-radius:3px;
+    box-shadow:0 6px 18px var(--shadow);
+  }
+  .tag h1{
+    font-family:'Cormorant Garamond',serif; font-weight:600; font-style:italic;
+    font-size:22px; margin:0; letter-spacing:0.02em; color:var(--moss);
+  }
+  .tag p{margin:2px 0 0; font-size:11px; color:var(--bark); letter-spacing:0.03em;}
+
+  .counter{
+    position:fixed; top:22px; right:22px;
+    background:var(--ink); color:var(--cream);
+    padding:9px 16px; border-radius:3px; font-size:13px; letter-spacing:0.02em;
+    box-shadow:0 6px 18px var(--shadow);
+    display:flex; align-items:baseline; gap:6px;
+  }
+  .counter b{font-family:'Cormorant Garamond',serif; font-size:20px; color:var(--gold-2); font-weight:600;}
+
+  .hint{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    background:rgba(36,28,18,0.72); color:var(--cream);
+    padding:8px 16px; border-radius:20px; font-size:12.5px; letter-spacing:0.02em;
+    white-space:nowrap;
+  }
+
+  /* ---------- 図鑑ボタン ---------- */
+  #zukanBtn{
+    position:fixed; bottom:22px; right:22px;
+    background:var(--moss); color:var(--cream); border:none;
+    font-family:'Cormorant Garamond',serif; font-weight:600; font-style:italic;
+    font-size:18px; padding:12px 22px; border-radius:3px; cursor:pointer;
+    box-shadow:0 8px 20px var(--shadow); letter-spacing:0.03em;
+    transition:transform .15s ease, background .15s ease;
+  }
+  #zukanBtn:hover{background:var(--moss-2); transform:translateY(-2px);}
+
+  /* ---------- Toast ---------- */
+  #toast{
+    position:fixed; top:96px; left:50%; transform:translateX(-50%) translateY(-14px);
+    background:var(--gold); color:var(--ink); padding:10px 22px; border-radius:3px;
+    font-family:'Cormorant Garamond',serif; font-weight:600; font-size:19px;
+    box-shadow:0 8px 22px var(--shadow); opacity:0; transition:opacity .35s ease, transform .35s ease;
+    letter-spacing:0.02em; pointer-events:none;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  /* ---------- Panel ---------- */
+  #panelWrap{
+    position:fixed; inset:0; background:rgba(20,16,8,0.45);
+    display:flex; justify-content:flex-end; z-index:20;
+    opacity:0; pointer-events:none; transition:opacity .25s ease;
+  }
+  #panelWrap.open{opacity:1; pointer-events:auto;}
+  #panel{
+    width:min(420px, 92vw); height:100%; background:var(--cream);
+    box-shadow:-10px 0 30px var(--shadow); padding:26px 22px;
+    overflow-y:auto; transform:translateX(24px); transition:transform .3s ease;
+    border-left:1px solid rgba(36,28,18,0.1);
+  }
+  #panelWrap.open #panel{transform:translateX(0);}
+  #panel h2{
+    font-family:'Cormorant Garamond',serif; font-weight:600; font-style:italic;
+    font-size:26px; margin:0 0 2px; color:var(--moss);
+  }
+  #panel .sub{font-size:12px; color:var(--bark); margin:0 0 18px; letter-spacing:0.02em;}
+  #closeBtn{
+    position:absolute; top:22px; right:22px; background:none; border:none;
+    font-size:22px; color:var(--bark); cursor:pointer; line-height:1;
+  }
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .card{
+    border:1px solid rgba(36,28,18,0.14); border-radius:3px; padding:12px 10px;
+    background:var(--cream-2); cursor:pointer; text-align:left;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .card:hover{transform:translateY(-2px); box-shadow:0 8px 16px var(--shadow);}
+  .card.locked{opacity:0.55; cursor:default;}
+  .card.locked:hover{transform:none; box-shadow:none;}
+  .swatch{width:100%; height:52px; border-radius:2px; margin-bottom:8px;
+    display:flex; align-items:center; justify-content:center; font-size:22px;}
+  .card .name{font-family:'Cormorant Garamond',serif; font-weight:600; font-size:16px; margin:0;}
+  .card .no{font-size:10px; color:var(--bark); letter-spacing:0.06em;}
+
+  /* ---------- Detail modal ---------- */
+  #detailWrap{
+    position:fixed; inset:0; background:rgba(20,16,8,0.55);
+    display:flex; align-items:center; justify-content:center; z-index:30;
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  #detailWrap.open{opacity:1; pointer-events:auto;}
+  #detailCard{
+    width:min(380px,88vw); background:var(--cream); border-radius:4px;
+    box-shadow:0 20px 50px var(--shadow); padding:24px 22px; position:relative;
+    border:1px solid rgba(36,28,18,0.12);
+  }
+  #detailCard .dswatch{width:100%; height:120px; border-radius:3px; margin-bottom:16px;
+    display:flex; align-items:center; justify-content:center; font-size:52px;}
+  #detailCard h3{font-family:'Cormorant Garamond',serif; font-style:italic; font-weight:600; font-size:24px; margin:0;}
+  #detailCard .latin{font-size:12px; color:var(--bark); font-style:italic; margin:2px 0 14px;}
+  #detailCard .row{display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-top:1px solid rgba(36,28,18,0.1);}
+  #detailCard .row span:first-child{color:var(--bark);}
+  #detailCard .desc{font-size:13px; line-height:1.65; margin-top:14px; color:var(--ink);}
+  #detailClose{position:absolute; top:14px; right:16px; background:none; border:none; font-size:20px; color:var(--bark); cursor:pointer;}
+  .stars{color:var(--gold);}
+</style>
+</head>
+<body>
+
+<a-scene fog="type: exponential; color: #B9C9A6; density: 0.045" background="color:#BFD8C4"
+  webxr="optionalFeatures: local-floor, bounded-floor, hand-tracking; referenceSpaceType: local-floor;">
+
+  <a-assets>
+    <img id="groundTex" crossorigin="anonymous" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiM0YzYyNDAiLz48L3N2Zz4=">
+  </a-assets>
+
+  <!-- 光源 -->
+  <a-entity light="type: ambient; color:#DDEBC9; intensity:0.55"></a-entity>
+  <a-entity light="type: directional; color:#FFF3D6; intensity:0.75" position="4 8 2"></a-entity>
+  <a-entity light="type: hemisphere; color:#EFFFE0; groundColor:#33472E; intensity:0.4"></a-entity>
+
+  <!-- 地面 -->
+  <a-plane rotation="-90 0 0" width="60" height="60" color="#4C6440" roughness="0.95" metalness="0"></a-plane>
+
+  <!-- 森・草・昆虫は JS で動的生成 -->
+  <a-entity id="forest"></a-entity>
+  <a-entity id="insects"></a-entity>
+
+  <!-- プレイヤーリグ -->
+  <a-entity id="rig" position="0 1.6 6" movement-controls="speed:0.12">
+    <a-camera look-controls wasd-controls="acceleration:16" near="0.05"></a-camera>
+  </a-entity>
+
+  <!-- マウス用カーソル（非VR） -->
+  <a-entity cursor="rayOrigin: mouse" raycaster="objects: .capturable; far: 60"></a-entity>
+
+  <!-- VRコントローラー -->
+  <a-entity laser-controls="hand: right" raycaster="objects: .capturable; far:25" line="color:#C9962C; opacity:0.85"></a-entity>
+  <a-entity laser-controls="hand: left" raycaster="objects: .capturable; far:25" line="color:#C9962C; opacity:0.85"></a-entity>
+
+</a-scene>
+
+<!-- ===================== HUD ===================== -->
+<div id="hud">
+  <div class="tag">
+    <h1>森の採集記</h1>
+    <p>VR INSECT FIELD GUIDE</p>
+  </div>
+
+  <div class="counter">採集数 <b id="countNum">0</b> / <span id="countTotal">6</span></div>
+
+  <div class="hint">クリック（またはトリガー）で昆虫を捕獲できます</div>
+
+  <button id="zukanBtn">図鑑を開く</button>
+
+  <div id="toast"></div>
+</div>
+
+<!-- 図鑑パネル -->
+<div id="panelWrap">
+  <div id="panel">
+    <button id="closeBtn">&times;</button>
+    <h2>採集図鑑</h2>
+    <p class="sub">CATALOGUE OF SPECIMENS — タップで詳細を見る</p>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<!-- 詳細モーダル -->
+<div id="detailWrap">
+  <div id="detailCard">
+    <button id="detailClose">&times;</button>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   種データ
+   ============================================================ */
+const SPECIES = [
+  { id:'dragonfly',   name:'オオヤマトンボ', latin:'Anax parthenope',            habitat:'池や小川のほとり', size:'体長 約7cm',   rarity:1, color:'#1F6F6F', icon:'🪰',
+    desc:'透き通った4枚の羽を持ち、水辺を高速で飛び回る。複眼は宝石のように多面的に輝く。' },
+  { id:'beetle',      name:'ミヤマクワガタ', latin:'Lucanus maculifemoratus',    habitat:'クヌギの樹液のそば', size:'体長 約6cm',   rarity:2, color:'#160D08', icon:'🪲',
+    desc:'黒く光沢のある甲殻と大きな顎が特徴。樹液をめぐりオス同士が力比べをする姿が見られる。' },
+  { id:'butterfly',   name:'アサギマダラ',   latin:'Parantica sita',             habitat:'花畑や林の縁',     size:'開張 約10cm',  rarity:1, color:'#E08114', icon:'🦋',
+    desc:'橙と黒の翅を持つ渡り蝶。海を越えて長距離を移動することで知られる。' },
+  { id:'firefly',     name:'ゲンジボタル',   latin:'Luciola cruciata',           habitat:'夜の草むらや水辺', size:'体長 約1.5cm', rarity:2, color:'#CFFF04', icon:'✨',
+    desc:'腹部の発光器が黄緑色に明滅する。夏の夜を彩るはかない光を放つ。' },
+  { id:'grasshopper', name:'ショウリョウバッタ', latin:'Acrida cinerea',         habitat:'背の高い草地',     size:'体長 約8cm',   rarity:1, color:'#5C8A3A', icon:'🦗',
+    desc:'細長い体で草に擬態する。発達した後脚で驚くほど遠くまで跳躍する。' },
+  { id:'jewelbeetle', name:'ヤマトタマムシ', latin:'Chrysochroa fulgidissima',   habitat:'エノキの梢',       size:'体長 約4cm',   rarity:3, color:'#D4AF37', icon:'💎',
+    desc:'金緑色に輝く虹色の甲殻を持つ。森の宝石と称される、なかなか出会えない昆虫。' },
+];
+
+const POSITIONS = {
+  dragonfly:   {x:-2.4, y:1.5, z:-3.0},
+  beetle:      {x: 1.8, y:0.6, z:-4.2},
+  butterfly:   {x:-3.6, y:1.9, z:-6.5},
+  firefly:     {x: 0.4, y:0.9, z:-2.2},
+  grasshopper: {x: 2.6, y:0.35,z:-1.8},
+  jewelbeetle: {x:-1.0, y:2.6, z:-9.0},
+};
+
+let captured = {};
+
+/* ============================================================
+   森の生成
+   ============================================================ */
+function buildForest(){
+  const forest = document.getElementById('forest');
+  const rand = (a,b)=>a+Math.random()*(b-a);
+  const trunkColors = ['#5C4630','#4A3A26','#6B5236'];
+  const leafColors  = ['#3B5A32','#4C6E3E','#34502B'];
+
+  for(let i=0;i<26;i++){
+    let x,z;
+    do{ x = rand(-16,16); z = rand(-18,3); } while(Math.hypot(x,z-6) < 3.2);
+    const h = rand(2.4,3.6);
+    const trunk = document.createElement('a-cylinder');
+    trunk.setAttribute('radius', rand(0.12,0.2));
+    trunk.setAttribute('height', h);
+    trunk.setAttribute('position', `${x} ${h/2} ${z}`);
+    trunk.setAttribute('color', trunkColors[i%3]);
+    trunk.setAttribute('material','roughness:0.9; metalness:0');
+    forest.appendChild(trunk);
+
+    for(let c=0;c<3;c++){
+      const leaf = document.createElement('a-dodecahedron');
+      leaf.setAttribute('radius', rand(0.9,1.5));
+      leaf.setAttribute('position', `${x+rand(-0.6,0.6)} ${h+rand(0.3,1.1)} ${z+rand(-0.6,0.6)}`);
+      leaf.setAttribute('color', leafColors[(i+c)%3]);
+      leaf.setAttribute('material','roughness:0.95; metalness:0');
+      leaf.setAttribute('rotation', `${rand(0,360)} ${rand(0,360)} ${rand(0,360)}`);
+      forest.appendChild(leaf);
+    }
+  }
+
+  for(let i=0;i<70;i++){
+    const x = rand(-14,14), z = rand(-16,4);
+    if(Math.hypot(x,z-6) < 2.4) continue;
+    const tuft = document.createElement('a-cone');
+    tuft.setAttribute('radius-bottom', rand(0.08,0.16));
+    tuft.setAttribute('radius-top', 0.01);
+    tuft.setAttribute('height', rand(0.35,0.7));
+    tuft.setAttribute('position', `${x} ${rand(0.15,0.35)} ${z}`);
+    tuft.setAttribute('color', leafColors[i%3]);
+    tuft.setAttribute('material','roughness:1');
+    forest.appendChild(tuft);
+  }
+}
+
+/* ============================================================
+   昆虫パーツ・ビルダー
+   ============================================================ */
+function makeWrapper(species, pos){
+  const el = document.createElement('a-entity');
+  el.classList.add('capturable');
+  el.dataset.species = species.id;
+  el.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+  el.setAttribute('animation__bob',
+    `property: position; dir: alternate; loop: true; dur: ${1600+Math.random()*800}; easing: easeInOutSine; to: ${pos.x} ${pos.y+0.18} ${pos.z}`);
+  el.setAttribute('animation__spin',
+    `property: rotation; dir: alternate; loop: true; dur: 3000; easing: easeInOutSine; to: 0 40 0`);
+  return el;
+}
+
+function addWings(parent, color, w, h, tiltDur){
+  ['-1','1'].forEach(sign=>{
+    const wing = document.createElement('a-plane');
+    wing.setAttribute('width', w);
+    wing.setAttribute('height', h);
+    wing.setAttribute('position', `${sign*w/2*0.9} 0.05 0`);
+    wing.setAttribute('rotation', `0 0 ${sign*8}`);
+    wing.setAttribute('material', `color:${color}; opacity:0.72; side:double; metalness:0.2; roughness:0.25; transparent:true`);
+    wing.setAttribute('animation__flap',
+      `property: rotation; dir: alternate; loop:true; dur:${tiltDur}; easing:easeInOutSine; to: 0 0 ${sign*46}`);
+    parent.appendChild(wing);
+  });
+}
+
+function buildInsect(id){
+  const sp = SPECIES.find(s=>s.id===id);
+  const pos = POSITIONS[id];
+  const root = makeWrapper(sp, pos);
+
+  if(id==='dragonfly'){
+    const body = document.createElement('a-cylinder');
+    body.setAttribute('radius',0.045); body.setAttribute('height',0.62);
+    body.setAttribute('rotation','90 0 0');
+    body.setAttribute('material', `color:${sp.color}; metalness:0.6; roughness:0.2; emissive:#0a3535; emissiveIntensity:0.15`);
+    root.appendChild(body);
+    const head = document.createElement('a-sphere');
+    head.setAttribute('radius',0.09); head.setAttribute('position','0 0 0.34');
+    head.setAttribute('material', `color:#123; metalness:0.7; roughness:0.15; emissive:#1F6F6F; emissiveIntensity:0.3`);
+    root.appendChild(head);
+    addWings(root, '#CFE8E4', 0.62, 0.14, 140);
+  }
+
+  if(id==='beetle'){
+    const body = document.createElement('a-sphere');
+    body.setAttribute('radius',0.22); body.setAttribute('scale','1 0.7 1.5');
+    body.setAttribute('material', `color:${sp.color}; metalness:0.85; roughness:0.12`);
+    root.appendChild(body);
+    ['-1','1'].forEach(sign=>{
+      const horn = document.createElement('a-cylinder');
+      horn.setAttribute('radius',0.02); horn.setAttribute('height',0.36);
+      horn.setAttribute('position', `${sign*0.05} 0.02 0.32`);
+      horn.setAttribute('rotation', `70 0 ${sign*10}`);
+      horn.setAttribute('material','color:#2b120c; metalness:0.7; roughness:0.2');
+      root.appendChild(horn);
+    });
+  }
+
+  if(id==='butterfly'){
+    addWings(root, sp.color, 0.5, 0.42, 260);
+    const tip1 = document.createElement('a-plane');
+    tip1.setAttribute('width',0.16); tip1.setAttribute('height',0.16);
+    tip1.setAttribute('position','0.32 0.1 0');
+    tip1.setAttribute('material','color:#111; opacity:0.85; side:double; transparent:true');
+    root.appendChild(tip1);
+    const body = document.createElement('a-cylinder');
+    body.setAttribute('radius',0.03); body.setAttribute('height',0.3); body.setAttribute('rotation','90 0 0');
+    body.setAttribute('material','color:#241C12; roughness:0.6');
+    root.appendChild(body);
+  }
+
+  if(id==='firefly'){
+    const body = document.createElement('a-sphere');
+    body.setAttribute('radius',0.06); body.setAttribute('scale','1 0.8 1.6');
+    body.setAttribute('material','color:#2b1c10; roughness:0.7');
+    root.appendChild(body);
+    const glow = document.createElement('a-sphere');
+    glow.setAttribute('radius',0.045); glow.setAttribute('position','0 -0.02 -0.08');
+    glow.setAttribute('material', `color:${sp.color}; emissive:${sp.color}; emissiveIntensity:0.9; roughness:0.3`);
+    glow.setAttribute('animation__pulse','property: material.emissiveIntensity; dir:alternate; loop:true; dur:900; to:0.25');
+    glow.setAttribute('light', `type:point; color:${sp.color}; intensity:0.7; distance:2.6`);
+    root.appendChild(glow);
+  }
+
+  if(id==='grasshopper'){
+    const body = document.createElement('a-cylinder');
+    body.setAttribute('radius',0.05); body.setAttribute('height',0.5); body.setAttribute('rotation','75 0 0');
+    body.setAttribute('material', `color:${sp.color}; roughness:0.75`);
+    root.appendChild(body);
+    ['-1','1'].forEach(sign=>{
+      const leg = document.createElement('a-cylinder');
+      leg.setAttribute('radius',0.018); leg.setAttribute('height',0.42);
+      leg.setAttribute('position', `${sign*0.1} -0.12 -0.1`);
+      leg.setAttribute('rotation', `0 0 ${sign*55}`);
+      leg.setAttribute('material', `color:${sp.color}; roughness:0.8`);
+      root.appendChild(leg);
+    });
+  }
+
+  if(id==='jewelbeetle'){
+    const body = document.createElement('a-sphere');
+    body.setAttribute('radius',0.17); body.setAttribute('scale','1 0.65 1.5');
+    body.setAttribute('material', `color:${sp.color}; metalness:1; roughness:0.05; emissive:${sp.color}; emissiveIntensity:0.25`);
+    root.appendChild(body);
+    body.setAttribute('light', `type:point; color:${sp.color}; intensity:0.5; distance:2`);
+  }
+
+  root.addEventListener('click', ()=>captureInsect(id));
+  return root;
+}
+
+function buildAllInsects(){
+  const container = document.getElementById('insects');
+  SPECIES.forEach(sp=>container.appendChild(buildInsect(sp.id)));
+}
+
+/* ============================================================
+   捕獲処理
+   ============================================================ */
+function captureInsect(id){
+  if(captured[id]) return;
+  const el = document.querySelector(`.capturable[data-species="${id}"]`);
+  if(!el) return;
+  captured[id] = true;
+
+  el.removeAttribute('animation__bob');
+  el.removeAttribute('animation__spin');
+  el.setAttribute('animation__capture','property: scale; to: 0.01 0.01 0.01; dur: 420; easing: easeInBack');
+  setTimeout(()=> el.parentNode && el.parentNode.removeChild(el), 440);
+
+  const sp = SPECIES.find(s=>s.id===id);
+  showToast(`${sp.name} を捕獲した！`);
+  document.getElementById('countNum').textContent = Object.keys(captured).length;
+  renderGrid();
+}
+
+function showToast(text){
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+/* ============================================================
+   図鑑パネル
+   ============================================================ */
+function renderGrid(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  SPECIES.forEach((sp,i)=>{
+    const got = !!captured[sp.id];
+    const card = document.createElement('div');
+    card.className = 'card' + (got ? '' : ' locked');
+    card.innerHTML = `
+      <div class="swatch" style="background:${got ? sp.color : '#C9C2AC'}">${got ? sp.icon : '？'}</div>
+      <p class="name">${got ? sp.name : '未採集'}</p>
+      <p class="no">No.${String(i+1).padStart(2,'0')}</p>
+    `;
+    if(got) card.addEventListener('click', ()=>openDetail(sp.id));
+    grid.appendChild(card);
+  });
+}
+
+function openDetail(id){
+  const sp = SPECIES.find(s=>s.id===id);
+  const body = document.getElementById('detailBody');
+  body.innerHTML = `
+    <div class="dswatch" style="background:${sp.color}">${sp.icon}</div>
+    <h3>${sp.name}</h3>
+    <p class="latin">${sp.latin}</p>
+    <div class="row"><span>生息地</span><span>${sp.habitat}</span></div>
+    <div class="row"><span>サイズ</span><span>${sp.size}</span></div>
+    <div class="row"><span>レア度</span><span class="stars">${'★'.repeat(sp.rarity)}${'☆'.repeat(3-sp.rarity)}</span></div>
+    <p class="desc">${sp.desc}</p>
+  `;
+  document.getElementById('detailWrap').classList.add('open');
+}
+
+document.getElementById('zukanBtn').addEventListener('click', ()=>{
+  renderGrid();
+  document.getElementById('panelWrap').classList.add('open');
+});
+document.getElementById('closeBtn').addEventListener('click', ()=>{
+  document.getElementById('panelWrap').classList.remove('open');
+});
+document.getElementById('detailClose').addEventListener('click', ()=>{
+  document.getElementById('detailWrap').classList.remove('open');
+});
+document.getElementById('panelWrap').addEventListener('click', (e)=>{
+  if(e.target.id==='panelWrap') e.currentTarget.classList.remove('open');
+});
+document.getElementById('detailWrap').addEventListener('click', (e)=>{
+  if(e.target.id==='detailWrap') e.currentTarget.classList.remove('open');
+});
+
+/* ============================================================
+   初期化
+   ============================================================ */
+document.getElementById('countTotal').textContent = SPECIES.length;
+const scene = document.querySelector('a-scene');
+if(scene.hasLoaded){
+  buildForest(); buildAllInsects(); renderGrid();
+} else {
+  scene.addEventListener('loaded', ()=>{ buildForest(); buildAllInsects(); renderGrid(); });
+}
+</script>
+</body>
+</html>
